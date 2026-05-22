@@ -213,7 +213,46 @@ let completed = new Set();
 let moveCount = 0;
 let dpr = window.devicePixelRatio || 1;
 
+// Control de Audio Context para políticas de privacidad de navegadores móviles
+let audioCtx = null;
+
 const board = { x: 0, y: 0, radius: 0 };
+
+/* =====================================================
+   SINTETIZADOR DE CHICHARRA (WEB AUDIO API)
+===================================================== */
+function playBuzzer() {
+    try {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        // Onda de diente de sierra (Sawtooth) da el efecto rasposo de chicharra clásica
+        osc.type = "sawtooth"; 
+        osc.frequency.setValueAtTime(110, audioCtx.currentTime); // Tono bajo grave
+
+        // Modulación rápida para simular vibración mecánica de chicharra móvil
+        osc.frequency.linearRampToValueAtTime(85, audioCtx.currentTime + 0.15);
+
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.18);
+    } catch (e) {
+        console.log("Audio no soportado o bloqueado aún.");
+    }
+}
 
 function resize(){
     dpr = window.devicePixelRatio || 1;
@@ -260,7 +299,6 @@ function generateLevel(){
     const pairCount = Math.min(4 + Math.floor(currentLevel / 5), 10);
     const mobile = window.innerWidth < 700;
     
-    // Ajuste dinámico de distancia óptima para evitar bucles infinitos en CPU móviles
     let minDistance = mobile ? 65 : 95; 
 
     for(let i = 0; i < pairCount; i++){
@@ -351,6 +389,11 @@ function startDraw(e){
     if(e.target.tagName === 'BUTTON') return;
     e.preventDefault();
     
+    // Desbloqueo del AudioContext tras la interacción inicial en móviles (Requisito de iOS/Android)
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
     const pos = getPos(e);
     const node = getNode(pos);
     if(!node) return;
@@ -375,7 +418,15 @@ function moveDraw(e){
 
     // Límite estricto circular interno
     if(distance(pos, { x: board.x, y: board.y }) > board.radius - 8) return;
-    if(lineHits(pos)) return;
+    
+    // SI CHOCA: Dispara chicharra inmediatamente y corta el trazo actual
+    if(lineHits(pos)){
+        playBuzzer();
+        drawing = false; 
+        currentPath = [];
+        draw();
+        return;
+    }
 
     currentPath.push({ x: pos.x, y: pos.y });
     draw();
@@ -415,7 +466,6 @@ function checkWin(){
 function drawPath(points, color){
     if(points.length < 2) return;
 
-    // Sombra del vector
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     for(let i = 1; i < points.length; i++){
@@ -427,7 +477,6 @@ function drawPath(points, color){
     ctx.lineJoin = "round";
     ctx.stroke();
 
-    // Línea Principal de flujo
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     for(let i = 1; i < points.length; i++){
@@ -443,7 +492,6 @@ function drawPath(points, color){
 function draw(){
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
-    // Render del fondo del Tablero Circular
     ctx.beginPath();
     ctx.arc(board.x, board.y, board.radius, 0, Math.PI * 2);
     ctx.fillStyle = "#fafafb";
@@ -452,7 +500,6 @@ function draw(){
     ctx.strokeStyle = "#111";
     ctx.stroke();
 
-    // Clipping del camino para que no desborde visualmente el contorno circular
     ctx.save();
     ctx.beginPath();
     ctx.arc(board.x, board.y, board.radius, 0, Math.PI * 2);
@@ -463,28 +510,23 @@ function draw(){
     
     ctx.restore();
 
-    // Render de los nodos finales
     const r = window.innerWidth < 700 ? 15 : 20;
     for(let n of nodes){
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.fillStyle = n.color;
         
-        // Brillo nativo optimizado
         ctx.shadowBlur = 12;
         ctx.shadowColor = n.color;
         ctx.fill();
         
-        ctx.shadowBlur = 0; // Limpieza inmediata para evitar degradación de GPU
+        ctx.shadowBlur = 0; 
         ctx.lineWidth = 3;
         ctx.strokeStyle = "#000";
         ctx.stroke();
     }
 }
 
-/* =====================================================
-   MAPPING DE EVENTOS Y ACCIONES
-===================================================== */
 document.getElementById("playBtn").onclick = () => {
     document.getElementById("menu").style.display = "none";
 };
@@ -516,11 +558,9 @@ document.getElementById("undoBtn").onclick = () => {
     }
 };
 
-// Parche preventivo para comportamientos móviles por defecto en Safari/Chrome
 document.addEventListener("gesturestart", e => e.preventDefault());
 document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
 
-// Controladores nativos
 canvas.addEventListener("touchstart", startDraw, { passive: false });
 canvas.addEventListener("touchmove", moveDraw, { passive: false });
 canvas.addEventListener("touchend", endDraw, { passive: false });
@@ -529,7 +569,6 @@ canvas.addEventListener("mousedown", startDraw);
 canvas.addEventListener("mousemove", moveDraw);
 window.addEventListener("mouseup", endDraw);
 
-// Inicialización de motor de renderizado
 resize();
 </script>
 </body>
