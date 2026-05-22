@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>EMI PUZZLE FLOW ❤️</title>
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    -webkit-tap-highlight-color:transparent;
+}
+html, body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    font-family: Arial, Helvetica, sans-serif;
+    background:#000;
+    touch-action:none;
+}
+body{
+    position:fixed;
+    inset:0;
+    background: radial-gradient(circle at top, #222, #000);
+}
+#menu{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    z-index:1000;
+    background: radial-gradient(circle at top, #333, #000);
+}
+#menu h1{
+    color:white;
+    font-size:clamp(32px, 8vw, 80px);
+    text-align:center;
+    margin-bottom:20px;
+    text-shadow: 0 0 20px #ff0055;
+}
+#menu p{
+    color:#ddd;
+    max-width:600px;
+    text-align:center;
+    line-height:1.5;
+    padding:0 20px;
+    margin-bottom:40px;
+    font-size:18px;
+}
+#playBtn{
+    border:none;
+    background: linear-gradient(135deg, #ff0055, #ff3377);
+    color:white;
+    font-weight:bold;
+    padding:16px 40px;
+    border-radius:20px;
+    font-size:22px;
+    cursor:pointer;
+    box-shadow: 0 0 25px #ff0055;
+}
+#topbar{
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%;
+    z-index:100;
+    padding: calc(env(safe-area-inset-top) + 10px) 10px 10px 10px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    pointer-events: none;
+}
+#topInfo, #buttons {
+    pointer-events: auto;
+}
+#topInfo{
+    display:flex;
+    gap:10px;
+}
+.panel{
+    flex:1;
+    background: rgba(255,255,255,.08);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,.1);
+    color:white;
+    padding:12px;
+    border-radius:16px;
+    text-align:center;
+    box-shadow: 0 0 15px rgba(0,0,0,.3);
+    font-weight: bold;
+}
+#buttons{
+    display:grid;
+    grid-template-columns: repeat(3,1fr);
+    gap:8px;
+}
+.topBtn{
+    border:none;
+    background:#ff0055;
+    color:white;
+    border-radius:14px;
+    font-size:14px;
+    font-weight:bold;
+    padding:12px;
+    min-height:48px;
+    cursor:pointer;
+    box-shadow: 0 0 15px rgba(255,0,85,.3);
+}
+#winScreen{
+    position:absolute;
+    inset:0;
+    background: rgba(0,0,0,.7);
+    display:none;
+    justify-content:center;
+    align-items:center;
+    z-index:500;
+}
+#winBox{
+    width:min(85%,400px);
+    background:white;
+    border-radius:30px;
+    padding:35px;
+    text-align:center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+#winBox h2{
+    color:#ff0055;
+    margin-bottom:15px;
+    font-size:36px;
+}
+#winBox p{
+    color:#444;
+    margin-bottom:25px;
+    font-size:18px;
+}
+#nextBtn{
+    border:none;
+    background:#ff0055;
+    color:white;
+    border-radius:20px;
+    padding:16px 40px;
+    font-size:20px;
+    font-weight:bold;
+    cursor:pointer;
+}
+canvas{
+    width:100%;
+    height:100%;
+    display:block;
+    touch-action:none;
+}
+</style>
+</head>
+<body>
+
+<!-- MENU -->
+<div id="menu">
+    <h1>EMI PUZZLE FLOW ❤️</h1>
+    <p>Une colores iguales sin cruzar líneas.<br>40 niveles progresivos.</p>
+    <button id="playBtn">COMENZAR</button>
+</div>
+
+<!-- TOPBAR -->
+<div id="topbar">
+    <div id="topInfo">
+        <div class="panel" id="levelText">Nivel 1 / 40</div>
+        <div class="panel" id="movesText">Movimientos: 0</div>
+    </div>
+    <div id="buttons">
+        <button class="topBtn" id="undoBtn">Deshacer</button>
+        <button class="topBtn" id="restartBtn">Reiniciar</button>
+        <button class="topBtn" id="resetBtn">Reset</button>
+    </div>
+</div>
+
+<!-- WIN -->
+<div id="winScreen">
+    <div id="winBox">
+        <h2>¡Excelente!</h2>
+        <p id="winText">Nivel completado</p>
+        <button id="nextBtn">Siguiente</button>
+    </div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const levelText = document.getElementById("levelText");
+const movesText = document.getElementById("movesText");
+const winScreen = document.getElementById("winScreen");
+const nextBtn = document.getElementById("nextBtn");
+
+const COLORS = [
+    "#ff3355", "#00cc66", "#3399ff", "#ff9900", "#cc33ff",
+    "#00dddd", "#ffee00", "#ff66aa", "#ffffff", "#ff5500"
+];
+const MAX_LEVELS = 40;
+
+let currentLevel = parseInt(localStorage.getItem("emiPuzzleLevel")) || 1;
+let nodes = [];
+let paths = [];
+let currentPath = [];
+let activeColor = null;
+let drawing = false;
+let completed = new Set();
+let moveCount = 0;
+let dpr = window.devicePixelRatio || 1;
+
+const board = { x: 0, y: 0, radius: 0 };
+
+function resize(){
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    ctx.scale(dpr, dpr);
+
+    const mobile = window.innerWidth < 700;
+    board.radius = mobile 
+        ? Math.min(window.innerWidth, window.innerHeight) * 0.36 
+        : Math.min(window.innerWidth, window.innerHeight) * 0.40;
+
+    board.x = window.innerWidth / 2;
+    board.y = mobile ? window.innerHeight * 0.62 : window.innerHeight / 2 + 30;
+
+    generateLevel();
+    draw();
+}
+
+window.addEventListener("resize", resize);
+
+function distance(a, b){
+    return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function randomPoint(){
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * (board.radius - 45);
+    return {
+        x: board.x + Math.cos(angle) * radius,
+        y: board.y + Math.sin(angle) * radius
+    };
+}
+
+function validPoint(point, list, min){
+    for(let p of list){
+        if(distance(point, p) < min) return false;
+    }
+    return true;
+}
+
+function generateLevel(){
+    nodes = [];
+    const pairCount = Math.min(4 + Math.floor(currentLevel / 5), 10);
+    const mobile = window.innerWidth < 700;
+    
+    // Ajuste dinámico de distancia óptima para evitar bucles infinitos en CPU móviles
+    let minDistance = mobile ? 65 : 95; 
+
+    for(let i = 0; i < pairCount; i++){
+        let p1, p2;
+        let tries = 0;
+
+        do {
+            p1 = randomPoint();
+            tries++;
+        } while(!validPoint(p1, nodes, minDistance) && tries < 150);
+
+        tries = 0;
+        do {
+            p2 = randomPoint();
+            tries++;
+        } while((!validPoint(p2, nodes, minDistance) || distance(p1, p2) < minDistance * 1.4) && tries < 150);
+
+        nodes.push({ x: p1.x, y: p1.y, color: COLORS[i] });
+        nodes.push({ x: p2.x, y: p2.y, color: COLORS[i] });
+    }
+
+    paths = [];
+    currentPath = [];
+    activeColor = null;
+    drawing = false;
+    completed.clear();
+    moveCount = 0;
+    updateUI();
+}
+
+function updateUI(){
+    levelText.innerHTML = "Nivel " + currentLevel + " / " + MAX_LEVELS;
+    movesText.innerHTML = "Movimientos: " + moveCount;
+}
+
+function getPos(e){
+    const rect = canvas.getBoundingClientRect();
+    let clientX, clientY;
+
+    if(e.touches && e.touches.length > 0){
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else if(e.changedTouches && e.changedTouches.length > 0){
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+
+    return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+    };
+}
+
+function getNode(pos){
+    const clickRadius = window.innerWidth < 700 ? 28 : 35;
+    for(let n of nodes){
+        if(distance(pos, n) < clickRadius) return n;
+    }
+    return null;
+}
+
+function ccw(a,b,c){
+    return ((c.y-a.y) * (b.x-a.x)) > ((b.y-a.y) * (c.x-a.x));
+}
+
+function intersect(a,b,c,d){
+    return (ccw(a,c,d) !== ccw(b,c,d)) && (ccw(a,b,c) !== ccw(a,b,d));
+}
+
+function lineHits(newPoint){
+    if(currentPath.length < 2) return false;
+    const a = currentPath[currentPath.length - 1];
+    const b = newPoint;
+
+    for(let p of paths){
+        if(p.color === activeColor) continue;
+        for(let i = 1; i < p.points.length; i++){
+            if(intersect(a, b, p.points[i-1], p.points[i])) return true;
+        }
+    }
+    return false;
+}
+
+function startDraw(e){
+    if(e.target.tagName === 'BUTTON') return;
+    e.preventDefault();
+    
+    const pos = getPos(e);
+    const node = getNode(pos);
+    if(!node) return;
+
+    drawing = true;
+    activeColor = node.color;
+    currentPath = [{ x: node.x, y: node.y }];
+
+    paths = paths.filter(p => p.color !== activeColor);
+    completed.delete(activeColor);
+    draw();
+}
+
+function moveDraw(e){
+    if(!drawing) return;
+    e.preventDefault();
+
+    const pos = getPos(e);
+    const last = currentPath[currentPath.length - 1];
+
+    if(distance(last, pos) < 6) return;
+
+    // Límite estricto circular interno
+    if(distance(pos, { x: board.x, y: board.y }) > board.radius - 8) return;
+    if(lineHits(pos)) return;
+
+    currentPath.push({ x: pos.x, y: pos.y });
+    draw();
+}
+
+function endDraw(e){
+    if(!drawing) return;
+    e.preventDefault();
+    drawing = false;
+
+    const pos = getPos(e);
+    const node = getNode(pos);
+
+    if(node && node.color === activeColor && currentPath.length > 1){
+        currentPath.push({ x: node.x, y: node.y });
+        paths.push({
+            color: activeColor,
+            points: [...currentPath]
+        });
+        completed.add(activeColor);
+        moveCount++;
+        updateUI();
+        checkWin();
+    }
+
+    currentPath = [];
+    draw();
+}
+
+function checkWin(){
+    const totalColors = [...new Set(nodes.map(n => n.color))];
+    if(completed.size === totalColors.length){
+        winScreen.style.display = "flex";
+    }
+}
+
+function drawPath(points, color){
+    if(points.length < 2) return;
+
+    // Sombra del vector
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for(let i = 1; i < points.length; i++){
+        ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = "rgba(0,0,0,.15)";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+
+    // Línea Principal de flujo
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for(let i = 1; i < points.length; i++){
+        ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = color;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+}
+
+function draw(){
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+    // Render del fondo del Tablero Circular
+    ctx.beginPath();
+    ctx.arc(board.x, board.y, board.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#fafafb";
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "#111";
+    ctx.stroke();
+
+    // Clipping del camino para que no desborde visualmente el contorno circular
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(board.x, board.y, board.radius, 0, Math.PI * 2);
+    ctx.clip();
+
+    for(let p of paths) drawPath(p.points, p.color);
+    if(currentPath.length) drawPath(currentPath, activeColor);
+    
+    ctx.restore();
+
+    // Render de los nodos finales
+    const r = window.innerWidth < 700 ? 15 : 20;
+    for(let n of nodes){
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = n.color;
+        
+        // Brillo nativo optimizado
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = n.color;
+        ctx.fill();
+        
+        ctx.shadowBlur = 0; // Limpieza inmediata para evitar degradación de GPU
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#000";
+        ctx.stroke();
+    }
+}
+
+/* =====================================================
+   MAPPING DE EVENTOS Y ACCIONES
+===================================================== */
+document.getElementById("playBtn").onclick = () => {
+    document.getElementById("menu").style.display = "none";
+};
+
+nextBtn.onclick = () => {
+    winScreen.style.display = "none";
+    currentLevel++;
+    if(currentLevel > MAX_LEVELS) currentLevel = 1;
+    localStorage.setItem("emiPuzzleLevel", currentLevel);
+    generateLevel();
+    draw();
+};
+
+document.getElementById("restartBtn").onclick = () => { generateLevel(); draw(); };
+document.getElementById("resetBtn").onclick = () => {
+    currentLevel = 1;
+    localStorage.setItem("emiPuzzleLevel", 1);
+    generateLevel();
+    draw();
+};
+
+document.getElementById("undoBtn").onclick = () => {
+    if(paths.length){
+        const removed = paths.pop();
+        completed.delete(removed.color);
+        moveCount = Math.max(0, moveCount - 1);
+        updateUI();
+        draw();
+    }
+};
+
+// Parche preventivo para comportamientos móviles por defecto en Safari/Chrome
+document.addEventListener("gesturestart", e => e.preventDefault());
+document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+
+// Controladores nativos
+canvas.addEventListener("touchstart", startDraw, { passive: false });
+canvas.addEventListener("touchmove", moveDraw, { passive: false });
+canvas.addEventListener("touchend", endDraw, { passive: false });
+
+canvas.addEventListener("mousedown", startDraw);
+canvas.addEventListener("mousemove", moveDraw);
+window.addEventListener("mouseup", endDraw);
+
+// Inicialización de motor de renderizado
+resize();
+</script>
+</body>
+</html>
